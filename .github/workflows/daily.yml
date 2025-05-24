@@ -16,6 +16,9 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t news-bot .
+      - name: Install Python dependencies
+        run: |
+          pip install -r requirements.txt
 
       # Fetch today's news URLs (writes to today_links.txt)
       - name: Fetch today’s news URLs

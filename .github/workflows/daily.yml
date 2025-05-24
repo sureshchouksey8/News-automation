@@ -6,7 +6,7 @@ on:
     - cron: '0 12 * * *'
     # 19:30 IST = 14:00 UTC
     - cron: '30 14 * * *'
-  workflow_dispatch:    # manual Run button
+  workflow_dispatch:
 
 jobs:
   run-editorial:
@@ -17,13 +17,16 @@ jobs:
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # Example URLs to validate (can be any headlines)
+      # Fetch today's news URLs (writes to today_links.txt)
+      - name: Fetch today’s news URLs
+        run: |
+          python fetch_news_urls.py
+
+      # Run validation + draft using links from today_links.txt
       - name: Run validation + draft
         run: |
           docker run --rm -v ${{ github.workspace }}:/out news-bot \
-            https://www.ndtv.com/india-news/example-url \
-            https://www.thehindu.com/news/example-url \
-            https://timesofindia.indiatimes.com/example-url || true
+            $(cat today_links.txt) || true
 
       - name: Upload artifacts
         if: always()

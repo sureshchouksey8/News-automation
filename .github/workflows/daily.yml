@@ -44,6 +44,6 @@ jobs:
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
           subject: "Daily Hindi Editorial – Run ${{ github.run_number }}"
-          to: youremail@gmail.com
-          from: "News Bot <youremail@gmail.com>"
+          to: sureshchouksey8@gmail.com
+          from: "News Bot <sureshchouksey8@gmail.com>"
           body_file: editorial.txt

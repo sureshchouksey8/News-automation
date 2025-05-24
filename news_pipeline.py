@@ -24,7 +24,7 @@ IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 TODAY = dt.datetime.now(IST).date()
 DATE_RE = re.compile(r"\b(\d{1,2}\s+\w+\s+\d{4})\b")
 SOFT404_PATTERNS = ["page not found", "404", "requested page", "हम इस पेज को"]
-OPENAI_MODEL = "gpt-4o-mini"   # change to gpt-3.5-turbo-0125 to save cost
+OPENAI_MODEL = "gpt-4o"   # change to gpt-3.5-turbo-0125 to save cost
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------- HELPERS ----------

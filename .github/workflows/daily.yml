@@ -1,0 +1,49 @@
+name: Daily News Editorial
+
+on:
+  schedule:
+    # 17:00 IST = 11:30 UTC (rounded to 12:00)
+    - cron: '0 12 * * *'
+    # 19:30 IST = 14:00 UTC
+    - cron: '30 14 * * *'
+  workflow_dispatch:    # manual Run button
+
+jobs:
+  run-editorial:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build Docker image
+        run: docker build -t news-bot .
+
+      # Example URLs to validate (can be any headlines)
+      - name: Run validation + draft
+        run: |
+          docker run --rm -v ${{ github.workspace }}:/out news-bot \
+            https://www.ndtv.com/india-news/example-url \
+            https://www.thehindu.com/news/example-url \
+            https://timesofindia.indiatimes.com/example-url || true
+
+      - name: Upload artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: run-${{ github.run_id }}
+          path: |
+            links.json
+            run-summary.json
+            editorial.txt
+
+      - name: Send email (only if editorial exists)
+        if: success() && hashFiles('editorial.txt') != ''
+        uses: dawidd6/action-send-mail@v3
+        with:
+          server_address: smtp.gmail.com
+          server_port: 465
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "Daily Hindi Editorial – Run ${{ github.run_number }}"
+          to: youremail@gmail.com
+          from: "News Bot <youremail@gmail.com>"
+          body_file: editorial.txt

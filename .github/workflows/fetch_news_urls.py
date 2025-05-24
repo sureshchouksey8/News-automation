@@ -34,5 +34,6 @@ for url in TIER1_SITES:
         else:
             all_links.add(url.rstrip('/') + '/' + l.lstrip('/'))
 
-for link in list(all_links)[:10]:  # limit to 10 links
-    print(link)
+with open('today_links.txt', 'w') as f:
+    for link in list(all_links)[:10]:
+        f.write(link.strip() + '\n')

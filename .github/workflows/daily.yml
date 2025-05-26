@@ -1,3 +1,4 @@
+# .github/workflows/daily.yaml
 name: Daily News Editorial
 
 on:
@@ -13,30 +14,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1️⃣ Checkout your code
+      # 1. Checkout repository (full history)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2️⃣ Build the Docker image
+      # 2. Build Docker image
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # 3️⃣ Install Python dependencies
+      # 3. Install Python deps
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 4️⃣ Install feedparser & dateutil
+      # 4. Install feedparser + dateutil
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
-      # 5️⃣ Fetch today’s news URLs
+      # 5. Fetch today’s news URLs
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6️⃣ Run the container and produce the draft
-      - name: Run validation + draft
+      # 6. Run the container with proper quoting & CWD
+      - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -45,20 +46,20 @@ jobs:
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          # Read links into a Bash array (one URL per element)
+          # load each link into a Bash array (no stray empty elements)
           mapfile -t LINKS < today_links.txt
-          echo "Running news-bot for ${#LINKS[@]} links..."
 
+          echo "=== RUNNING news-bot CONTAINER with ${#LINKS[@]} URLs ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -w /out \
             -e OPENAI_API_KEY \
             news-bot "${LINKS[@]}"
 
-          echo "=== OUTPUT FILES ==="
+          echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
-      # 7️⃣ Upload any generated artifacts
+      # 7. Upload any outputs
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,7 +70,7 @@ jobs:
             run-summary.json
             editorial.txt
 
-      # 8️⃣ Send email if we got an editorial
+      # 8. Send email if editorial was generated
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3

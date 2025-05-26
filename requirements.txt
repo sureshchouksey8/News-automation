@@ -4,3 +4,5 @@ readability-lxml==0.8.1
 python-dateutil==2.9.0
 requests==2.31.0
 openai==1.30.0
+requests
+python-dateutil

@@ -35,29 +35,25 @@ jobs:
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run news-bot with container output logging
+      # 6. Run news-bot with extra debug (single link)
       - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
-
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          # Combine links into ARGS
-          ARGS=$(paste -sd' ' today_links.txt)
-
-          echo "=== RUNNING news-bot CONTAINER with args: $ARGS ==="
-
-          # Run container and always capture output to log
+          # Grab first link only for debug
+          LINK=$(head -n 1 today_links.txt)
+          echo "=== RUNNING news-bot CONTAINER with LINK: $LINK ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -e OPENAI_API_KEY \
-            news-bot $ARGS > container.log 2>&1 || true
+            news-bot "$LINK" > container.log 2>&1 || true
 
           echo "=== CONTAINER OUTPUT ==="
-          cat container.log
+          cat container.log || true
 
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print

@@ -13,38 +13,55 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Pull your latest code
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2. Build your Docker bot image
       - name: Build Docker image
         run: docker build -t news-bot .
 
+      # 3. Install any Python libs your script needs
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # 4. Install feedparser (used by fetch_news_urls.py)
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
+      # 5. Run your Python script to get today’s links
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      - name: Run validation + draft (debug)
+      # 6. Run the Docker container *very verbosely* so we see everything
+      - name: Run validation + draft (deep debug)
+        env:
+          # Let the container talk to OpenAI
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
-          if [ -s today_links.txt ]; then
-            echo "=== TODAY LINKS ==="
-            cat today_links.txt
-            echo "=== STARTING CONTAINER ==="
-            docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt)
-          else
-            echo "❗ No links found for TODAY"
-            exit 1
-          fi
-          echo "=== WORKSPACE AFTER CONTAINER ==="
+          echo "=== TODAY LINKS ==="
+          cat today_links.txt
+
+          echo "=== RUNNING news-bot CONTAINER with DEBUG ==="
+          # -v mounts your workspace into /out inside the container
+          # -e passes in your API key
+          docker run --rm \
+            -v "${{ github.workspace }}:/out" \
+            -e OPENAI_API_KEY \
+            news-bot /bin/bash -c '
+              set -x
+              echo Arguments: "$@"
+              # replace /entrypoint.sh if your Dockerfile uses a different script
+              /entrypoint.sh "$@"
+            ' -- $(cat today_links.txt)
+
+          echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
+      # 7. Upload whatever the container produced
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -55,6 +72,7 @@ jobs:
             run-summary.json
             editorial.txt
 
+      # 8. Send the email if the editorial was created
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3
@@ -63,7 +81,7 @@ jobs:
           server_port: 465
           username: ${{ secrets.SMTP_USER }}
           password: ${{ secrets.SMTP_PASS }}
-          subject: "Daily Hindi Editorial – Run ${{ github.run_number }}"
+          subject: "Daily Hindi Editorial – Run #${{ github.run_number }}"
           to: sureshchouksey8@gmail.com
           from: "News Bot <sureshchouksey8@gmail.com>"
           body_file: editorial.txt

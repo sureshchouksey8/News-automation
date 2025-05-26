@@ -1,3 +1,4 @@
+```yaml
 name: Daily News Editorial
 
 on:
@@ -13,17 +14,17 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout your code fresh (no cache)
+      # 1. Checkout code
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Build the Docker image
+      # 2. Build Docker image
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # 3. Install Python deps for fetch script
+      # 3. Install Python dependencies
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
@@ -31,31 +32,31 @@ jobs:
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
-      # 5. Fetch today’s news links
+      # 5. Fetch today's news URLs
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Deep-debug the news-bot container
+      # 6. Run news-bot container with debug to reveal entrypoint behavior
       - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
-
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          echo "=== RUNNING container with debug ==="
+          echo "=== RUNNING news-bot CONTAINER ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -e OPENAI_API_KEY \
+            --entrypoint /entrypoint.sh \
             news-bot \
-            /bin/bash -cx "/entrypoint.sh $(cat today_links.txt)"
+            $(cat today_links.txt)
 
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
-      # 7. Upload whatever was generated
+      # 7. Upload artifacts
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -79,3 +80,4 @@ jobs:
           to: sureshchouksey8@gmail.com
           from: "News Bot <sureshchouksey8@gmail.com>"
           body_file: editorial.txt
+```

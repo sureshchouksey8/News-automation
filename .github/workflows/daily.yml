@@ -35,7 +35,7 @@ jobs:
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run news-bot with full debug
+      # 6. Run news-bot with container output logging
       - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -43,35 +43,36 @@ jobs:
           set -eux
 
           echo "=== TODAY LINKS ==="
-          # Load the URLs into a Bash array
-          mapfile -t LINKS < today_links.txt
-          printf '%s\n' "${LINKS[@]}"
+          cat today_links.txt
 
-          echo "=== RUNNING news-bot CONTAINER ==="
-          # Mount the repo as /out, cd into /out, pass the URLs, and capture all logs
+          # Combine links into ARGS
+          ARGS=$(paste -sd' ' today_links.txt)
+
+          echo "=== RUNNING news-bot CONTAINER with args: $ARGS ==="
+
+          # Run container and always capture output to log
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
-            -w /out \
             -e OPENAI_API_KEY \
-            news-bot "${LINKS[@]}" 2>&1 | tee container.log || true
+            news-bot $ARGS > container.log 2>&1 || true
 
-          echo "=== CONTAINER LOGS ==="
+          echo "=== CONTAINER OUTPUT ==="
           cat container.log
 
-          echo "=== FILES IN WORKSPACE ==="
+          echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
-      # 7. Upload artifacts (including container.log)
+      # 7. Upload artifacts
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run-${{ github.run_id }}
           path: |
-            container.log
             links.json
             run-summary.json
             editorial.txt
+            container.log
 
       # 8. Send email if editorial exists
       - name: Send email (only if editorial exists)

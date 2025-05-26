@@ -11,7 +11,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Build Docker image
         run: docker build -t news-bot .
@@ -19,10 +22,8 @@ jobs:
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # ---------- INSERTED STEP BELOW ----------
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
-      # -----------------------------------------
 
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py

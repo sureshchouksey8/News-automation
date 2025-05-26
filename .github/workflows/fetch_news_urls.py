@@ -23,10 +23,11 @@ IST = tz.gettz("Asia/Kolkata")
 TODAY = datetime.now(IST).date()
 
 def is_today(entry):
-    for key in ["published", "updated", "created"]:
-        if key in entry and entry[key]:
+    for key in ("published", "updated", "created"):
+        val = entry.get(key)
+        if val:
             try:
-                dt = dtparse(entry[key]).astimezone(IST)
+                dt = dtparse(val).astimezone(IST)
                 if dt.date() == TODAY:
                     return True
             except Exception as e:
@@ -39,26 +40,19 @@ def main():
 
     for url in RSS_FEEDS:
         logging.debug(f"Parsing RSS feed: {url}")
-        try:
-            d = feedparser.parse(url)
-            for entry in d.entries:
-                pubdate = (
-                    entry.get("published") or
-                    entry.get("updated") or
-                    entry.get("created") or
-                    "no-date"
-                )
-                logging.debug(f"  entry: {entry.get('link','NO_LINK')} | date: {pubdate}")
-                if is_today(entry):
-                    link = entry.get("link")
-                    if link and link not in seen:
-                        seen.add(link)
-                        links.append(link)
-                if len(links) >= 10:
-                    break
-        except Exception as e:
-            logging.debug(f"ERROR parsing {url}: {e}")
-
+        d = feedparser.parse(url)
+        if d.bozo:
+            logging.debug(f"Feed parse error for {url}: {d.bozo_exception}")
+        for entry in d.entries:
+            pub = entry.get("published") or entry.get("updated") or entry.get("created") or ""
+            logging.debug(f"  entry: {entry.get('link','NO_LINK')} | date: {pub}")
+            if is_today(entry) and entry.get("link"):
+                link = entry["link"]
+                if link not in seen:
+                    seen.add(link)
+                    links.append(link)
+            if len(links) >= 10:
+                break
         if len(links) >= 10:
             break
 

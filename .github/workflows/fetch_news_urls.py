@@ -37,3 +37,6 @@ for url in TIER1_SITES:
 with open('today_links.txt', 'w') as f:
     for link in list(all_links)[:10]:
         f.write(link.strip() + '\n')
+        for link in list(all_links)[:10]:
+    print(link)
+

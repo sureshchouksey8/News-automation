@@ -1,93 +1,98 @@
 #!/usr/bin/env python3
 """
-fetch_news_urls.py – RSS + HTML fallback today’s links extractor for GitHub Actions
-Writes up to 10 URLs (from Tier-1 Indian outlets) published TODAY.
+fetch_news_urls.py  –  RSS + HTML-fallback today’s links extractor
+Auto-runs in GitHub Actions to produce today_links.txt
 """
 
-import requests, logging
+import requests
+import xml.etree.ElementTree as ET
 from datetime import datetime
 from dateutil import parser as dparse
-from xml.etree import ElementTree as ET
 from bs4 import BeautifulSoup
+import logging
 
-logging.basicConfig(level=logging.DEBUG, format='DEBUG: %(message)s')
-TODAY = datetime.now().date()
-DATE_SEG = TODAY.strftime("%Y/%m/%d")
+logging.basicConfig(level=logging.DEBUG, format="DEBUG: %(message)s")
 
-# 1) RSS feeds (only those that still work)
+# --- RSS feeds for Tier-1 Indian news (today’s top stories / national) ---
 RSS_FEEDS = [
-    "https://www.thehindu.com/news/national/rssfeed.xml",
-    "https://feeds.feedburner.com/ndtvnews-latest",
+    "https://www.thehindu.com/rss/national.xml",
+    "https://feeds.feedburner.com/NDTV-News?format=xml",
     "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
     "https://indianexpress.com/section/india/feed/",
-    # Hindustan Times RSS is now 401; we’ll scrape its HTML section instead
+    "https://www.hindustantimes.com/rss/india/rssfeed.xml",
 ]
 
-# 2) Section pages for HTML fallback (look for /YYYY/MM/DD/ in the URL)
-SECTION_URLS = [
-    "https://www.thehindu.com/news/national/",
+# --- Section pages to scrape if RSS yields nothing ---
+HTML_SECTIONS = [
+    "https://www.thehindu.com/news/national",
     "https://www.ndtv.com/india-news",
     "https://timesofindia.indiatimes.com/india",
-    "https://indianexpress.com/section/india/",
-    "https://www.hindustantimes.com/india-news/",
+    "https://indianexpress.com/section/india",
+    "https://www.hindustantimes.com/india-news",
 ]
 
-def fetch_from_rss(url):
-    logging.debug(f"Fetching RSS: {url}")
+TODAY = datetime.now().date()
+PATTERNS = [TODAY.strftime("%Y/%m/%d"), TODAY.strftime("%Y-%m-%d")]
+
+
+def fetch_from_feed(url):
     try:
+        logging.debug(f"Fetching RSS: {url}")
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         root = ET.fromstring(resp.content)
         links = []
         for item in root.findall(".//item"):
             pub = item.find("pubDate")
-            if not pub is None and pub.text:
-                if dparse.parse(pub.text).date() == TODAY:
-                    link = item.find("link")
-                    if link is not None and link.text:
-                        links.append(link.text.strip())
+            if pub is None or not pub.text:
+                continue
+            if dparse.parse(pub.text).date() == TODAY:
+                link = item.find("link")
+                if link is not None and link.text:
+                    links.append(link.text.strip())
         logging.debug(f"{len(links)} links from RSS")
         return links
     except Exception as e:
-        logging.debug(f"ERROR RSS {url}: {e}")
+        logging.debug(f"ERROR fetching {url}: {e}")
         return []
 
+
 def fetch_from_section(url):
-    logging.debug(f"Scraping HTML: {url}")
     try:
+        logging.debug(f"Scraping HTML: {url}")
         resp = requests.get(url, timeout=10)
         resp.raise_for_status()
         soup = BeautifulSoup(resp.text, "html.parser")
-        links = set()
+        links = []
         for a in soup.find_all("a", href=True):
             href = a["href"]
-            if DATE_SEG in href:
-                if href.startswith("http"):
-                    links.add(href)
-                else:
-                    links.add(url.rstrip("/") + "/" + href.lstrip("/"))
+            if any(p in href for p in PATTERNS):
+                full = href if href.startswith("http") else url.rstrip("/") + "/" + href.lstrip("/")
+                links.append(full)
         logging.debug(f"{len(links)} links from HTML")
-        return list(links)
+        return links
     except Exception as e:
-        logging.debug(f"ERROR HTML {url}: {e}")
+        logging.debug(f"ERROR scraping {url}: {e}")
         return []
 
-def main():
-    seen, out = set(), []
 
-    # 1) Try RSS
+def main():
+    seen = set()
+    out = []
+
+    # 1) Try RSS feeds first
     for feed in RSS_FEEDS:
-        for link in fetch_from_rss(feed):
+        for link in fetch_from_feed(feed):
             if link not in seen:
                 seen.add(link)
                 out.append(link)
         if len(out) >= 10:
             break
 
-    # 2) Fallback to section-page scraping
-    if len(out) < 10:
-        for sec in SECTION_URLS:
-            for link in fetch_from_section(sec):
+    # 2) If still nothing, fall back to HTML scraping
+    if not out:
+        for section in HTML_SECTIONS:
+            for link in fetch_from_section(section):
                 if link not in seen:
                     seen.add(link)
                     out.append(link)
@@ -98,12 +103,12 @@ def main():
     if not today_links:
         logging.debug("❗ No links found for TODAY")
 
-    # write for Actions
+    # Write to file for Actions
     with open("today_links.txt", "w") as f:
         for u in today_links:
             f.write(u + "\n")
 
-    # echo into the log
+    # Echo to the log so you can see them in GitHub Actions
     for u in today_links:
         print(u)
 

@@ -11,6 +11,7 @@ on:
 jobs:
   run-editorial:
     runs-on: ubuntu-latest
+
     steps:
       - uses: actions/checkout@v4
 
@@ -18,18 +19,18 @@ jobs:
         run: docker build -t news-bot .
 
       - name: Install Python dependencies
-        run: |
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
 
-      # Fetch today's news URLs (writes to today_links.txt)
       - name: Fetch today’s news URLs
-        run: |
-          python fetch_news_urls.py
+        run: python fetch_news_urls.py
 
-      # Run validation + draft using links from today_links.txt
       - name: Run validation + draft
         run: |
-          docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt) || true
+          if [ -s today_links.txt ]; then
+            docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt) || true
+          else
+            echo "❗ No links found for TODAY"
+          fi
 
       - name: Upload artifacts
         if: always()

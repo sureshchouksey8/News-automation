@@ -2,7 +2,7 @@ name: Daily News Editorial
 
 on:
   schedule:
-    # 17:00 IST = 11:30 UTC (rounded to 12:00)
+    # 17:00 IST = 11:30 UTC
     - cron: '0 12 * * *'
     # 19:30 IST = 14:00 UTC
     - cron: '30 14 * * *'
@@ -16,6 +16,7 @@ jobs:
 
       - name: Build Docker image
         run: docker build -t news-bot .
+
       - name: Install Python dependencies
         run: |
           pip install -r requirements.txt
@@ -26,7 +27,7 @@ jobs:
           python fetch_news_urls.py
 
       # Run validation + draft using links from today_links.txt
-      -       - name: Run validation + draft
+      - name: Run validation + draft
         run: |
           docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt) || true
 

@@ -51,10 +51,16 @@ jobs:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
+
           echo "=== TODAY LINKS ==="
           cat today_links.txt
+
           echo "=== STARTING CONTAINER ==="
-          docker run --rm -v "${{ github.workspace }}:/out" -e OPENAI_API_KEY news-bot $(cat today_links.txt)
+          docker run --rm \
+            -v "${{ github.workspace }}:/out" \
+            -e OPENAI_API_KEY \
+            news-bot $(cat today_links.txt)
+
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 

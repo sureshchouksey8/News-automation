@@ -4,9 +4,9 @@ news_pipeline.py  –  Hindi-editorial validator + OpenAI drafter
 
 • Collects candidate URLs from allow-list tier-1 sites (passed in argv).
 • Validates each page: HTTP 200, no soft-404 words, visible & meta date == today (IST),
-  original_publish_time check, earliest Wayback ≤ 48 h, official anchor when needed.
+  earliest Wayback ≤ 48 h.
 • Requires ≥ 3 distinct tier-1 domains & ≥ 2 unique fingerprints.
-• Drafts a 400-600-word Hindi editorial via OpenAI (gpt-4o-mini).
+• Drafts a 400-600-word Hindi editorial via OpenAI.
 • Writes: links.json, run-summary.json, editorial.txt (if successful).
 """
 
@@ -17,14 +17,18 @@ from readability import Document
 
 # ---------- CONFIG ----------
 TIER1 = {
-    "thehindu.com", "timesofindia.indiatimes.com", "indianexpress.com",
-    "hindustantimes.com", "ndtv.com", "indiatoday.in"
+    "thehindu.com", "www.thehindu.com",
+    "timesofindia.indiatimes.com", "www.timesofindia.indiatimes.com",
+    "indianexpress.com", "www.indianexpress.com",
+    "hindustantimes.com", "www.hindustantimes.com",
+    "ndtv.com", "www.ndtv.com",
+    "indiatoday.in", "www.indiatoday.in"
 }
 IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 TODAY = dt.datetime.now(IST).date()
 DATE_RE = re.compile(r"\b(\d{1,2}\s+\w+\s+\d{4})\b")
 SOFT404_PATTERNS = ["page not found", "404", "requested page", "हम इस पेज को"]
-OPENAI_MODEL = "gpt-4o"   # change to gpt-3.5-turbo-0125 to save cost
+OPENAI_MODEL = "gpt-4o"   # or gpt-3.5-turbo-0125
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------- HELPERS ----------
@@ -57,23 +61,29 @@ def fingerprint(text: str) -> str:
         return "WIRE_SERVICE"
     return hashlib.sha1(text.encode()).hexdigest()[:32]
 
-# Wayback earliest snapshot age (≤48 h)
 def archive_age(url: str) -> int:
-    api = f"https://web.archive.org/cdx/search/cdx?url={url}&output=json&limit=1&filter=statuscode:200"
+    api = (
+        "https://web.archive.org/cdx/search/cdx?"
+        f"url={url}&output=json&limit=1&filter=statuscode:200"
+    )
     try:
-        ts = requests.get(api, timeout=4).json()[1][1]  # earliest
-        first = dt.datetime.strptime(ts, "%Y%m%d%H%M%S").replace(
-            tzinfo=dt.timezone.utc).astimezone(IST)
+        ts = requests.get(api, timeout=4).json()[1][1]
+        first = dt.datetime.strptime(ts, "%Y%m%d%H%M%S")\
+            .replace(tzinfo=dt.timezone.utc)\
+            .astimezone(IST)
         return int((dt.datetime.now(IST) - first).total_seconds() / 3600)
     except Exception:
-        return 0  # treat as fresh if no snapshot
+        return 0
 
-# Quick GET with retry
 def fetch(url: str, timeout: int = 8) -> str:
     for _ in range(2):
         try:
-            r = requests.get(url, timeout=timeout,
-                             headers={"User-Agent": "Mozilla/5.0"}, allow_redirects=False)
+            r = requests.get(
+                url,
+                timeout=timeout,
+                headers={"User-Agent": "Mozilla/5.0"},
+                allow_redirects=False
+            )
             if r.status_code == 200:
                 return r.text
         except Exception:
@@ -94,7 +104,8 @@ def validate(url: str):
         return None, "too_short"
     vis = visible_date(text)
     meta = BeautifulSoup(html, "html.parser").find(
-        "meta", {"property": "article:published_time"})
+        "meta", {"property": "article:published_time"}
+    )
     meta_date = meta["content"] if meta and meta.get("content") else ""
     if to_ist(vis) != TODAY or to_ist(meta_date) != TODAY:
         return None, "not_today"
@@ -108,7 +119,7 @@ def validate(url: str):
         "fp": fingerprint(readable_text(html))
     }, None
 
-# ---------- OPENAI DRAFT ----------
+# ---------- DRAFT WITH OPENAI ----------
 def draft_editorial(valid_links):
     import openai, datetime as dt
     openai.api_key = openai_api_key
@@ -140,17 +151,24 @@ def main():
             validated.append(v)
         else:
             errors[u] = err
+
     uniq_fp = {v["fp"] for v in validated}
     if len(validated) >= 3 and len(uniq_fp) >= 2:
         editorial = draft_editorial(validated)
         with open("editorial.txt", "w", encoding="utf-8") as f:
             f.write(editorial)
         json.dump(validated, open("links.json", "w", encoding="utf-8"), indent=2)
-        json.dump({"stage_pass": True, "urls": validated},
-                  open("run-summary.json", "w", encoding="utf-8"), indent=2)
+        json.dump(
+            {"stage_pass": True, "urls": validated},
+            open("run-summary.json", "w", encoding="utf-8"),
+            indent=2
+        )
     else:
-        json.dump({"stage_pass": False, "errors": errors},
-                  open("run-summary.json", "w", encoding="utf-8"), indent=2)
+        json.dump(
+            {"stage_pass": False, "errors": errors},
+            open("run-summary.json", "w", encoding="utf-8"),
+            indent=2
+        )
 
 if __name__ == "__main__":
     if len(sys.argv) < 4:

@@ -16,7 +16,6 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          # ensure we pull the very latest commit, no caching
           fetch-depth: 0
 
       - name: Build Docker image
@@ -31,13 +30,20 @@ jobs:
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      - name: Run validation + draft
+      - name: Run validation + draft (debug)
         run: |
+          set -eux
           if [ -s today_links.txt ]; then
-            docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt) || true
+            echo "=== TODAY LINKS ==="
+            cat today_links.txt
+            echo "=== STARTING CONTAINER ==="
+            docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt)
           else
             echo "❗ No links found for TODAY"
+            exit 1
           fi
+          echo "=== WORKSPACE AFTER CONTAINER ==="
+          find . -maxdepth 2 -type f -print
 
       - name: Upload artifacts
         if: always()

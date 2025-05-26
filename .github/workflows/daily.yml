@@ -26,10 +26,9 @@ jobs:
           python fetch_news_urls.py
 
       # Run validation + draft using links from today_links.txt
-      - name: Run validation + draft
+      -       - name: Run validation + draft
         run: |
-          docker run --rm -v ${{ github.workspace }}:/out news-bot \
-            $(cat today_links.txt) || true
+          docker run --rm -v ${{ github.workspace }}:/out news-bot $(cat today_links.txt) || true
 
       - name: Upload artifacts
         if: always()

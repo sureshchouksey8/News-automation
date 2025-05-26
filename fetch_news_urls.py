@@ -1,73 +1,69 @@
 #!/usr/bin/env python3
 """
-fetch_news_urls.py  –  RSS‐based today’s links extractor
-Auto-runs in GitHub Actions to produce today_links.txt
-(with debug logging to stderr)
+fetch_news_urls.py – RSS robust today’s links extractor using feedparser.
 """
 
-import sys
-import requests
-import xml.etree.ElementTree as ET
+import logging
+import feedparser
 from datetime import datetime
-from dateutil import parser as dparse
+from dateutil import tz
+from dateutil.parser import parse as dtparse
 
-# --- RSS feeds for Tier-1 Indian news (today’s top stories / national) ---
+logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
+
 RSS_FEEDS = [
-    "https://www.thehindu.com/news/national/?service=rss",
-    "https://feeds.feedburner.com/NDTV-News",
+    "https://www.thehindu.com/news/national/feeder/default.rss",
+    "https://feeds.feedburner.com/ndtvnews-latest",
     "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
-    "https://indianexpress.com/section/india/feed/",
-    "https://www.hindustantimes.com/rss/india/rssfeed.xml",
+    "https://www.indianexpress.com/section/india/feed/",
+    "https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml",
 ]
 
-TODAY = datetime.now().date()
+IST = tz.gettz("Asia/Kolkata")
+TODAY = datetime.now(IST).date()
 
-def fetch_from_feed(url):
-    try:
-        resp = requests.get(url, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        links = []
-        for item in root.findall(".//item"):
-            pub = item.find("pubDate")
-            if not pub or not pub.text:
-                continue
-            pub_date = dparse.parse(pub.text).date()
-            if pub_date == TODAY:
-                link = item.find("link")
-                if link is not None and link.text:
-                    links.append(link.text.strip())
-        return links
-    except Exception as e:
-        print(f"ERROR fetching {url}: {e}", file=sys.stderr)
-        return []
+def is_today(entry):
+    for key in ("published", "updated", "created"):
+        val = entry.get(key)
+        if val:
+            try:
+                dt = dtparse(val).astimezone(IST)
+                if dt.date() == TODAY:
+                    return True
+            except Exception as e:
+                logging.debug(f"Date parse error in {entry.get('link', 'no link')}: {e}")
+    return False
 
 def main():
     seen = set()
-    out = []
+    links = []
 
-    for feed in RSS_FEEDS:
-        print(f"DEBUG: Fetching {feed}", file=sys.stderr)
-        links = fetch_from_feed(feed)
-        print(f"DEBUG: {len(links)} links from {feed}", file=sys.stderr)
-        for u in links:
-            if u not in seen:
-                seen.add(u)
-                out.append(u)
-        if len(out) >= 10:
+    for url in RSS_FEEDS:
+        logging.debug(f"Parsing RSS feed: {url}")
+        d = feedparser.parse(url)
+        if d.bozo:
+            logging.debug(f"Feed parse error for {url}: {d.bozo_exception}")
+        for entry in d.entries:
+            pub = entry.get("published") or entry.get("updated") or entry.get("created") or ""
+            logging.debug(f"  entry: {entry.get('link','NO_LINK')} | date: {pub}")
+            if is_today(entry) and entry.get("link"):
+                link = entry["link"]
+                if link not in seen:
+                    seen.add(link)
+                    links.append(link)
+            if len(links) >= 10:
+                break
+        if len(links) >= 10:
             break
 
-    if not out:
-        print("DEBUG: ❗ No links found for TODAY", file=sys.stderr)
-
-    # write the actual list for the next step
-    with open("today_links.txt", "w") as f:
-        for u in out[:10]:
-            f.write(u + "\n")
-
-    # and echo them to stdout so they show up in the Actions log
-    for u in out[:10]:
-        print(u)
+    if links:
+        with open("today_links.txt", "w") as f:
+            for link in links:
+                f.write(link + "\n")
+        for link in links:
+            print(link)
+    else:
+        logging.debug("❗ No links found for TODAY")
 
 if __name__ == "__main__":
     main()

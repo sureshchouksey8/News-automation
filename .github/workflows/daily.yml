@@ -35,26 +35,22 @@ jobs:
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run news-bot with extra debug (single link)
-      - name: Run validation + draft (debug)
+      # 6. Run news-bot with just the first link (diagnostic)
+      - name: Run validation + draft (debug mode, single link)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
           echo "=== TODAY LINKS ==="
           cat today_links.txt
-
-          # Grab first link only for debug
           LINK=$(head -n 1 today_links.txt)
-          echo "=== RUNNING news-bot CONTAINER with LINK: $LINK ==="
+          echo "=== First link: $LINK ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -e OPENAI_API_KEY \
             news-bot "$LINK" > container.log 2>&1 || true
-
           echo "=== CONTAINER OUTPUT ==="
-          cat container.log || true
-
+          cat container.log
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
@@ -68,7 +64,6 @@ jobs:
             links.json
             run-summary.json
             editorial.txt
-            container.log
 
       # 8. Send email if editorial exists
       - name: Send email (only if editorial exists)

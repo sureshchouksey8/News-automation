@@ -15,11 +15,11 @@ logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
 # --- source lists ---
 RSS_FEEDS = [
-    "https://www.thehindu.com/news/national/rss.xml",
+    "https://www.thehindu.com/news/national/feeder/default.rss",
     "https://feeds.feedburner.com/ndtvnews-latest",      # official NDTV
     "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
-    "https://indianexpress.com/section/india/feed/",
-    "https://www.hindustantimes.com/rss/india/rssfeed.xml",
+    "https://www.indianexpress.com/section/india/feed/",
+    "https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml",
 ]
 
 HTML_SECTIONS = [
@@ -45,12 +45,15 @@ def fetch_from_rss(url):
             pub = item.find("pubDate")
             if not pub or not pub.text:
                 continue
-            pub_date = dparse.parse(pub.text).date()
+            try:
+                pub_date = dparse.parse(pub.text).date()
+            except Exception:
+                continue
             if pub_date == TODAY:
                 link = item.find("link")
                 if link is not None and link.text:
                     links.append(link.text.strip())
-        logging.debug(f"{len(links)} links from RSS")
+        logging.debug(f"{len(links)} links from RSS: {url}")
         return links
     except Exception as e:
         logging.debug(f"ERROR fetching {url}: {e}")
@@ -65,13 +68,14 @@ def fetch_from_html(url):
         today_str = TODAY.strftime("%d %B %Y")
         links = []
         for a in soup.find_all("a", href=True):
+            # fallback: match date in link text or title
             text = (a.get_text(" ", strip=True) or "") + " " + (a.get("title") or "")
             if today_str in text:
                 href = a["href"]
                 if href.startswith("/"):
                     href = url.rstrip("/") + href
                 links.append(href)
-        logging.debug(f"{len(links)} links from HTML")
+        logging.debug(f"{len(links)} links from HTML: {url}")
         return links
     except Exception as e:
         logging.debug(f"ERROR scraping {url}: {e}")
@@ -90,7 +94,7 @@ def main():
         if len(out) >= 10:
             break
 
-    # 2. If still none, try HTML sections
+    # 2. If still none, fallback to HTML sections
     if not out:
         logging.debug("❗ RSS gave 0 — falling back to HTML scraping")
         for sec in HTML_SECTIONS:
@@ -105,7 +109,6 @@ def main():
     if not today_links:
         logging.debug("❗ No links found for TODAY")
     else:
-        # write file + print
         with open("today_links.txt", "w") as f:
             for u in today_links:
                 f.write(u + "\n")

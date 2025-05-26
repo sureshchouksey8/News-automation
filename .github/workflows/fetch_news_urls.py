@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 fetch_news_urls.py  –  RSS-based today’s links extractor
-Date: auto-run script for GitHub Actions
+Auto-runs in GitHub Actions to produce today_links.txt
 """
 
 import requests
@@ -25,10 +25,9 @@ def fetch_from_feed(url):
         resp = requests.get(url, timeout=10)
         root = ET.fromstring(resp.content)
         links = []
-        # RSS items live under channel/item
         for item in root.findall(".//item"):
             pub = item.find("pubDate")
-            if pub is None or not pub.text:
+            if not pub or not pub.text:
                 continue
             pub_date = dparse.parse(pub.text).date()
             if pub_date == TODAY:
@@ -36,13 +35,13 @@ def fetch_from_feed(url):
                 if link is not None and link.text:
                     links.append(link.text.strip())
         return links
-    except Exception as e:
-        # network/parse error
+    except Exception:
         return []
 
 def main():
     seen = set()
     out = []
+
     for feed in RSS_FEEDS:
         for link in fetch_from_feed(feed):
             if link not in seen:
@@ -51,15 +50,14 @@ def main():
         if len(out) >= 10:
             break
 
-    # Take at most 10 links
-    today_links = out[:10]
+    today_links = out[:10]  # limit to 10 links
 
-    # Write to file
+    # Write to file for workflow
     with open("today_links.txt", "w") as f:
         for u in today_links:
             f.write(u + "\n")
 
-    # Also print to stdout so you see them in the GitHub Actions log
+    # Print to logs for visibility
     for u in today_links:
         print(u)
 

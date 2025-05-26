@@ -1,39 +1,73 @@
-# fetch_news_urls.py
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
+#!/usr/bin/env python3
+"""
+fetch_news_urls.py  –  RSS‐based today’s links extractor
+Auto-runs in GitHub Actions to produce today_links.txt
+(with debug logging to stderr)
+"""
 
-TIER1_SITES = [
-    "https://www.thehindu.com/news/",
-    "https://www.ndtv.com/india-news",
-    "https://timesofindia.indiatimes.com/india",
-    "https://indianexpress.com/section/india/",
-    "https://www.hindustantimes.com/india-news",
+import sys
+import requests
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from dateutil import parser as dparse
+
+# --- RSS feeds for Tier-1 Indian news (today’s top stories / national) ---
+RSS_FEEDS = [
+    "https://www.thehindu.com/news/national/?service=rss",
+    "https://feeds.feedburner.com/NDTV-News",
+    "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "https://indianexpress.com/section/india/feed/",
+    "https://www.hindustantimes.com/rss/india/rssfeed.xml",
 ]
 
-today = datetime.now().strftime('%d %B %Y')  # e.g., "25 May 2025"
+TODAY = datetime.now().date()
 
-def find_today_links(site_url):
+def fetch_from_feed(url):
     try:
-        r = requests.get(site_url, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
+        resp = requests.get(url, timeout=10)
+        resp.raise_for_status()
+        root = ET.fromstring(resp.content)
         links = []
-        for a in soup.find_all('a', href=True):
-            if today in a.text or today in a.get('title', ''):
-                links.append(a['href'])
+        for item in root.findall(".//item"):
+            pub = item.find("pubDate")
+            if not pub or not pub.text:
+                continue
+            pub_date = dparse.parse(pub.text).date()
+            if pub_date == TODAY:
+                link = item.find("link")
+                if link is not None and link.text:
+                    links.append(link.text.strip())
         return links
-    except Exception:
+    except Exception as e:
+        print(f"ERROR fetching {url}: {e}", file=sys.stderr)
         return []
 
-all_links = set()
-for url in TIER1_SITES:
-    links = find_today_links(url)
-    for l in links:
-        if l.startswith('http'):
-            all_links.add(l)
-        else:
-            all_links.add(url.rstrip('/') + '/' + l.lstrip('/'))
+def main():
+    seen = set()
+    out = []
 
-with open('today_links.txt', 'w') as f:
-    for link in list(all_links)[:10]:
-        f.write(link.strip() + '\n')
+    for feed in RSS_FEEDS:
+        print(f"DEBUG: Fetching {feed}", file=sys.stderr)
+        links = fetch_from_feed(feed)
+        print(f"DEBUG: {len(links)} links from {feed}", file=sys.stderr)
+        for u in links:
+            if u not in seen:
+                seen.add(u)
+                out.append(u)
+        if len(out) >= 10:
+            break
+
+    if not out:
+        print("DEBUG: ❗ No links found for TODAY", file=sys.stderr)
+
+    # write the actual list for the next step
+    with open("today_links.txt", "w") as f:
+        for u in out[:10]:
+            f.write(u + "\n")
+
+    # and echo them to stdout so they show up in the Actions log
+    for u in out[:10]:
+        print(u)
+
+if __name__ == "__main__":
+    main()

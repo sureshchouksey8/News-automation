@@ -1,6 +1,6 @@
 """
 news_pipeline.py  –  Hindi-editorial validator + OpenAI drafter
-24 May 2025   v11 (stable chat-only edition)
+27 May 2025   v11-debug (date check debug print added)
 
 • Collects candidate URLs from allow-list tier-1 sites (passed in argv).
 • Validates each page: HTTP 200, no soft-404 words, visible & meta date == today (IST),
@@ -28,7 +28,7 @@ IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 TODAY = dt.datetime.now(IST).date()
 DATE_RE = re.compile(r"\b(\d{1,2}\s+\w+\s+\d{4})\b")
 SOFT404_PATTERNS = ["page not found", "404", "requested page", "हम इस पेज को"]
-OPENAI_MODEL = "gpt-4o"   # or gpt-3.5-turbo-0125
+OPENAI_MODEL = "gpt-4o"
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------- HELPERS ----------
@@ -107,7 +107,10 @@ def validate(url: str):
         "meta", {"property": "article:published_time"}
     )
     meta_date = meta["content"] if meta and meta.get("content") else ""
-    if to_ist(vis) != TODAY or to_ist(meta_date) != TODAY:
+    # === DEBUG PRINT ===
+    print(f"DEBUG: url={url}\n  visible_date={vis}\n  meta_date={meta_date}\n  TODAY={TODAY}")
+    # === END DEBUG PRINT ===
+    if to_ist(vis) != TODAY and to_ist(meta_date) != TODAY:
         return None, "not_today"
     if archive_age(url) > 48:
         return None, "archive_old"

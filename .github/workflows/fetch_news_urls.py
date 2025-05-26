@@ -23,7 +23,6 @@ IST = tz.gettz("Asia/Kolkata")
 TODAY = datetime.now(IST).date()
 
 def is_today(entry):
-    # Try published, updated, etc.
     for key in ["published", "updated", "created"]:
         if key in entry and entry[key]:
             try:

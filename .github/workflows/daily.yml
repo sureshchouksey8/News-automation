@@ -1,3 +1,4 @@
+```yaml
 name: Daily News Editorial
 
 on:
@@ -13,30 +14,24 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Pull your latest code (no cache)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Build your Docker bot image
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # 3. Install Python libs for your fetch script
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 4. Install feedparser + dateutil for fetch_news_urls.py
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
-      # 5. Run Python to grab today’s links into today_links.txt
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run your bot container **with API key** and **see every command** it runs
-      - name: Run validation + draft (deep debug)
+      - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -44,21 +39,13 @@ jobs:
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          echo "=== RUNNING news-bot CONTAINER with full debug ==="
-          docker run --rm \
-            -v "${{ github.workspace }}:/out" \   # Mount your repo root as /out in the container
-            -e OPENAI_API_KEY \                   # Provide the API key inside the container
-            news-bot /bin/bash -c '
-              set -x                              # Turn on shell debug inside container
-              echo "Entrypoint path: $(which entrypoint.sh || echo entrypoint.sh not found)"
-              # Adjust if your Dockerfile uses a different startup script:
-              /entrypoint.sh "$@"                # Run the container’s default entrypoint
-            ' -- $(cat today_links.txt)
+          echo "=== RUNNING news-bot CONTAINER ==="
+          docker run --rm -v "${{ github.workspace }}:/out" -e OPENAI_API_KEY news-bot \
+            /bin/bash -c "set -x; echo Entrypoint: $(which entrypoint.sh || echo 'entrypoint not found'); /entrypoint.sh $(cat today_links.txt)"
 
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
-      # 7. Upload whatever the container produced
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,7 +56,6 @@ jobs:
             run-summary.json
             editorial.txt
 
-      # 8. Send the email if editorial.txt exists
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3
@@ -82,3 +68,4 @@ jobs:
           to: sureshchouksey8@gmail.com
           from: "News Bot <sureshchouksey8@gmail.com>"
           body_file: editorial.txt
+```

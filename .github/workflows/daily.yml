@@ -1,3 +1,5 @@
+name: Daily News Editorial
+
 on:
   schedule:
     # 17:00 IST = 11:30 UTC
@@ -14,6 +16,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
+          # ensure we pull the very latest commit, no caching
           fetch-depth: 0
 
       - name: Build Docker image

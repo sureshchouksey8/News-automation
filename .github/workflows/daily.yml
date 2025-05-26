@@ -13,30 +13,30 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
+      # 1️⃣ Checkout your code
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # 2. Build Docker image
+      # 2️⃣ Build the Docker image
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # 3. Install Python dependencies
+      # 3️⃣ Install Python dependencies
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 4. Install feedparser + dateutil
+      # 4️⃣ Install feedparser & dateutil
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
-      # 5. Fetch today’s news URLs
+      # 5️⃣ Fetch today’s news URLs
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run news-bot with correct argument quoting
-      - name: Run validation + draft (debug)
+      # 6️⃣ Run the container and produce the draft
+      - name: Run validation + draft
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -45,20 +45,20 @@ jobs:
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          # Read links into a Bash array
+          # Read links into a Bash array (one URL per element)
           mapfile -t LINKS < today_links.txt
+          echo "Running news-bot for ${#LINKS[@]} links..."
 
-          echo "=== RUNNING news-bot CONTAINER with args: ${LINKS[*]} ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -w /out \
             -e OPENAI_API_KEY \
             news-bot "${LINKS[@]}"
 
-          echo "=== FILES AFTER CONTAINER ==="
+          echo "=== OUTPUT FILES ==="
           find . -maxdepth 2 -type f -print
 
-      # 7. Upload artifacts
+      # 7️⃣ Upload any generated artifacts
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -69,7 +69,7 @@ jobs:
             run-summary.json
             editorial.txt
 
-      # 8. Send email if editorial exists
+      # 8️⃣ Send email if we got an editorial
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3

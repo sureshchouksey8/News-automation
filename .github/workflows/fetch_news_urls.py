@@ -1,119 +1,76 @@
 #!/usr/bin/env python3
 """
-fetch_news_urls.py  –  RSS + HTML-fallback today’s links extractor
-Auto-runs in GitHub Actions to produce today_links.txt
+fetch_news_urls.py – RSS robust today’s links extractor using feedparser.
 """
 
 import logging
-import requests
-import xml.etree.ElementTree as ET
+import feedparser
 from datetime import datetime
-from dateutil import parser as dparse
-from bs4 import BeautifulSoup
+from dateutil import tz
+from dateutil.parser import parse as dtparse
 
 logging.basicConfig(level=logging.DEBUG, format="%(levelname)s: %(message)s")
 
-# --- source lists ---
 RSS_FEEDS = [
     "https://www.thehindu.com/news/national/feeder/default.rss",
-    "https://feeds.feedburner.com/ndtvnews-latest",      # official NDTV
+    "https://feeds.feedburner.com/ndtvnews-latest",
     "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
     "https://www.indianexpress.com/section/india/feed/",
     "https://www.hindustantimes.com/feeds/rss/latest/rssfeed.xml",
 ]
 
-HTML_SECTIONS = [
-    "https://www.thehindu.com/news/national",
-    "https://www.ndtv.com/india-news",
-    "https://timesofindia.indiatimes.com/india",
-    "https://indianexpress.com/section/india",
-    "https://www.hindustantimes.com/india-news",
-]
+IST = tz.gettz("Asia/Kolkata")
+TODAY = datetime.now(IST).date()
 
-TODAY = datetime.now().date()
-USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 Chrome/115.0 Safari/537.36"
-
-def fetch_from_rss(url):
-    logging.debug(f"Fetching RSS: {url}")
-    try:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=10)
-        resp.raise_for_status()
-        root = ET.fromstring(resp.content)
-        items = root.findall(".//item")
-        links = []
-        for item in items:
-            pub = item.find("pubDate")
-            if not pub or not pub.text:
-                continue
+def is_today(entry):
+    # Try published, updated, etc.
+    for key in ["published", "updated", "created"]:
+        if key in entry and entry[key]:
             try:
-                pub_date = dparse.parse(pub.text).date()
-            except Exception:
-                continue
-            if pub_date == TODAY:
-                link = item.find("link")
-                if link is not None and link.text:
-                    links.append(link.text.strip())
-        logging.debug(f"{len(links)} links from RSS: {url}")
-        return links
-    except Exception as e:
-        logging.debug(f"ERROR fetching {url}: {e}")
-        return []
-
-def fetch_from_html(url):
-    logging.debug(f"Scraping HTML: {url}")
-    try:
-        resp = requests.get(url, headers={"User-Agent": USER_AGENT}, timeout=10)
-        resp.raise_for_status()
-        soup = BeautifulSoup(resp.text, "html.parser")
-        today_str = TODAY.strftime("%d %B %Y")
-        links = []
-        for a in soup.find_all("a", href=True):
-            # fallback: match date in link text or title
-            text = (a.get_text(" ", strip=True) or "") + " " + (a.get("title") or "")
-            if today_str in text:
-                href = a["href"]
-                if href.startswith("/"):
-                    href = url.rstrip("/") + href
-                links.append(href)
-        logging.debug(f"{len(links)} links from HTML: {url}")
-        return links
-    except Exception as e:
-        logging.debug(f"ERROR scraping {url}: {e}")
-        return []
+                dt = dtparse(entry[key]).astimezone(IST)
+                if dt.date() == TODAY:
+                    return True
+            except Exception as e:
+                logging.debug(f"Date parse error in {entry.get('link', 'no link')}: {e}")
+    return False
 
 def main():
     seen = set()
-    out = []
+    links = []
 
-    # 1. Try RSS feeds
-    for feed in RSS_FEEDS:
-        for link in fetch_from_rss(feed):
-            if link not in seen:
-                seen.add(link)
-                out.append(link)
-        if len(out) >= 10:
+    for url in RSS_FEEDS:
+        logging.debug(f"Parsing RSS feed: {url}")
+        try:
+            d = feedparser.parse(url)
+            for entry in d.entries:
+                pubdate = (
+                    entry.get("published") or
+                    entry.get("updated") or
+                    entry.get("created") or
+                    "no-date"
+                )
+                logging.debug(f"  entry: {entry.get('link','NO_LINK')} | date: {pubdate}")
+                if is_today(entry):
+                    link = entry.get("link")
+                    if link and link not in seen:
+                        seen.add(link)
+                        links.append(link)
+                if len(links) >= 10:
+                    break
+        except Exception as e:
+            logging.debug(f"ERROR parsing {url}: {e}")
+
+        if len(links) >= 10:
             break
 
-    # 2. If still none, fallback to HTML sections
-    if not out:
-        logging.debug("❗ RSS gave 0 — falling back to HTML scraping")
-        for sec in HTML_SECTIONS:
-            for link in fetch_from_html(sec):
-                if link not in seen:
-                    seen.add(link)
-                    out.append(link)
-            if len(out) >= 10:
-                break
-
-    today_links = out[:10]
-    if not today_links:
-        logging.debug("❗ No links found for TODAY")
-    else:
+    if links:
         with open("today_links.txt", "w") as f:
-            for u in today_links:
-                f.write(u + "\n")
-        for u in today_links:
-            print(u)
+            for link in links:
+                f.write(link + "\n")
+        for link in links:
+            print(link)
+    else:
+        logging.debug("❗ No links found for TODAY")
 
 if __name__ == "__main__":
     main()

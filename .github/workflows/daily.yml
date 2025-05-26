@@ -1,4 +1,3 @@
-```yaml
 name: Daily News Editorial
 
 on:
@@ -14,38 +13,49 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # 1. Checkout your code fresh (no cache)
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
+      # 2. Build the Docker image
       - name: Build Docker image
         run: docker build -t news-bot .
 
+      # 3. Install Python deps for fetch script
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
+      # 4. Install feedparser + dateutil
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
+      # 5. Fetch today’s news links
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
+      # 6. Deep-debug the news-bot container
       - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
           set -eux
+
           echo "=== TODAY LINKS ==="
           cat today_links.txt
 
-          echo "=== RUNNING news-bot CONTAINER ==="
-          docker run --rm -v "${{ github.workspace }}:/out" -e OPENAI_API_KEY news-bot \
-            /bin/bash -c "set -x; echo Entrypoint: $(which entrypoint.sh || echo 'entrypoint not found'); /entrypoint.sh $(cat today_links.txt)"
+          echo "=== RUNNING container with debug ==="
+          docker run --rm \
+            -v "${{ github.workspace }}:/out" \
+            -e OPENAI_API_KEY \
+            news-bot \
+            /bin/bash -cx "/entrypoint.sh $(cat today_links.txt)"
 
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
+      # 7. Upload whatever was generated
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -56,6 +66,7 @@ jobs:
             run-summary.json
             editorial.txt
 
+      # 8. Send email if editorial exists
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3
@@ -68,4 +79,3 @@ jobs:
           to: sureshchouksey8@gmail.com
           from: "News Bot <sureshchouksey8@gmail.com>"
           body_file: editorial.txt
-```

@@ -1,6 +1,6 @@
 """
 news_pipeline.py  –  Hindi-editorial validator + OpenAI drafter
-27 May 2025   v11-debug (date check debug print added)
+27 May 2025   v12 (openai>=1.0.0 compatible)
 
 • Collects candidate URLs from allow-list tier-1 sites (passed in argv).
 • Validates each page: HTTP 200, no soft-404 words, visible & meta date == today (IST),
@@ -28,7 +28,7 @@ IST = dt.timezone(dt.timedelta(hours=5, minutes=30))
 TODAY = dt.datetime.now(IST).date()
 DATE_RE = re.compile(r"\b(\d{1,2}\s+\w+\s+\d{4})\b")
 SOFT404_PATTERNS = ["page not found", "404", "requested page", "हम इस पेज को"]
-OPENAI_MODEL = "gpt-4o"
+OPENAI_MODEL = "gpt-4o"   # or gpt-3.5-turbo-0125
 openai_api_key = os.getenv("OPENAI_API_KEY")
 
 # ---------- HELPERS ----------
@@ -107,9 +107,6 @@ def validate(url: str):
         "meta", {"property": "article:published_time"}
     )
     meta_date = meta["content"] if meta and meta.get("content") else ""
-    # === DEBUG PRINT ===
-    print(f"DEBUG: url={url}\n  visible_date={vis}\n  meta_date={meta_date}\n  TODAY={TODAY}")
-    # === END DEBUG PRINT ===
     if to_ist(vis) != TODAY and to_ist(meta_date) != TODAY:
         return None, "not_today"
     if archive_age(url) > 48:
@@ -122,10 +119,9 @@ def validate(url: str):
         "fp": fingerprint(readable_text(html))
     }, None
 
-# ---------- DRAFT WITH OPENAI ----------
+# ---------- DRAFT WITH OPENAI (NEW SYNTAX) ----------
 def draft_editorial(valid_links):
-    import openai, datetime as dt
-    openai.api_key = openai_api_key
+    import openai
     today = dt.datetime.now(IST).strftime("%-d %B %Y")
     src_md = "\n".join(f"- {v['url']}" for v in valid_links)
     prompt = textwrap.dedent(f"""
@@ -137,12 +133,13 @@ def draft_editorial(valid_links):
         स्रोत:
         {src_md}
     """)
-    resp = openai.ChatCompletion.create(
+    client = openai.OpenAI(api_key=openai_api_key)
+    response = client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[{"role": "user", "content": prompt}],
         temperature=0.7,
     )
-    return resp.choices[0].message.content.strip()
+    return response.choices[0].message.content.strip()
 
 # ---------- MAIN ----------
 def main():

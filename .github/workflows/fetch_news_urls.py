@@ -1,42 +1,67 @@
-# fetch_news_urls.py
-import requests
-from bs4 import BeautifulSoup
-from datetime import datetime
+#!/usr/bin/env python3
+"""
+fetch_news_urls.py  –  RSS-based today’s links extractor
+Date: auto-run script for GitHub Actions
+"""
 
-TIER1_SITES = [
-    "https://www.thehindu.com/news/",
-    "https://www.ndtv.com/india-news",
-    "https://timesofindia.indiatimes.com/india",
-    "https://indianexpress.com/section/india/",
-    "https://www.hindustantimes.com/india-news",
+import requests
+import xml.etree.ElementTree as ET
+from datetime import datetime
+from dateutil import parser as dparse
+
+# --- RSS feeds for Tier-1 Indian news (today’s top stories / national) ---
+RSS_FEEDS = [
+    "https://www.thehindu.com/news/national/?service=rss",
+    "https://feeds.feedburner.com/NDTV-News",
+    "https://timesofindia.indiatimes.com/rssfeedstopstories.cms",
+    "https://indianexpress.com/section/india/feed/",
+    "https://www.hindustantimes.com/rss/india/rssfeed.xml",
 ]
 
-today = datetime.now().strftime('%d %B %Y')  # e.g., "25 May 2025"
+TODAY = datetime.now().date()
 
-def find_today_links(site_url):
+def fetch_from_feed(url):
     try:
-        r = requests.get(site_url, timeout=10)
-        soup = BeautifulSoup(r.text, "html.parser")
+        resp = requests.get(url, timeout=10)
+        root = ET.fromstring(resp.content)
         links = []
-        for a in soup.find_all('a', href=True):
-            if today in a.text or today in a.get('title', ''):
-                links.append(a['href'])
+        # RSS items live under channel/item
+        for item in root.findall(".//item"):
+            pub = item.find("pubDate")
+            if pub is None or not pub.text:
+                continue
+            pub_date = dparse.parse(pub.text).date()
+            if pub_date == TODAY:
+                link = item.find("link")
+                if link is not None and link.text:
+                    links.append(link.text.strip())
         return links
-    except Exception:
+    except Exception as e:
+        # network/parse error
         return []
 
-all_links = set()
-for url in TIER1_SITES:
-    links = find_today_links(url)
-    for l in links:
-        if l.startswith('http'):
-            all_links.add(l)
-        else:
-            all_links.add(url.rstrip('/') + '/' + l.lstrip('/'))
+def main():
+    seen = set()
+    out = []
+    for feed in RSS_FEEDS:
+        for link in fetch_from_feed(feed):
+            if link not in seen:
+                seen.add(link)
+                out.append(link)
+        if len(out) >= 10:
+            break
 
-with open('today_links.txt', 'w') as f:
-    for link in list(all_links)[:10]:
-        f.write(link.strip() + '\n')
-        for link in list(all_links)[:10]:
-    print(link)
+    # Take at most 10 links
+    today_links = out[:10]
 
+    # Write to file
+    with open("today_links.txt", "w") as f:
+        for u in today_links:
+            f.write(u + "\n")
+
+    # Also print to stdout so you see them in the GitHub Actions log
+    for u in today_links:
+        print(u)
+
+if __name__ == "__main__":
+    main()

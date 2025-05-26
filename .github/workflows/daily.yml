@@ -35,7 +35,17 @@ jobs:
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 6. Run validation + draft (debug)
+      # 6. Check number of links (require at least 3)
+      - name: Check number of links
+        run: |
+          n=$(wc -l < today_links.txt)
+          if [ "$n" -lt 3 ]; then
+            echo "❌ Need at least 3 news links! Found only $n"
+            cat today_links.txt
+            exit 1
+          fi
+
+      # 7. Run validation + draft (debug)
       - name: Run validation + draft (debug)
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -48,7 +58,7 @@ jobs:
           echo "=== FILES AFTER CONTAINER ==="
           find . -maxdepth 2 -type f -print
 
-      # 7. Upload artifacts
+      # 8. Upload artifacts
       - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
@@ -59,7 +69,7 @@ jobs:
             run-summary.json
             editorial.txt
 
-      # 8. Send email if editorial exists
+      # 9. Send email if editorial exists
       - name: Send email (only if editorial exists)
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3

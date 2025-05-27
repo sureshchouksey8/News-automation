@@ -2,8 +2,10 @@ name: Daily News Editorial
 
 on:
   schedule:
-    - cron: '0 12 * * *'   # Daily at ~17:00 IST
-    - cron: '30 14 * * *'   # Daily at ~19:30 IST
+    # 17:00 IST = 11:30 UTC
+    - cron: '0 12 * * *'
+    # 19:30 IST = 14:00 UTC
+    - cron: '30 14 * * *'
   workflow_dispatch:
 
 jobs:
@@ -11,26 +13,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      # 1) Checkout code
+      - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2) Install runner deps (for fetch_news_urls.py)
       - name: Install runner deps
         run: pip install feedparser python-dateutil
 
-      - name: Fetch today's news URLs
+      # 3) Fetch today’s news URLs
+      - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
+      # 4) Require at least 3 links
       - name: Require ≥3 links
         run: |
           n=$(wc -l < today_links.txt)
           if [ "$n" -lt 3 ]; then
             echo "❌ Only $n links found."
+            cat today_links.txt
             exit 1
           fi
 
+      # 5) Build Docker image
       - name: Build Docker image
         run: docker build -t news-bot .
 
+      # 6) Generate editorial inside container
       - name: Generate Editorial
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -40,13 +49,15 @@ jobs:
             -e OPENAI_API_KEY \
             news-bot $(cat today_links.txt)
 
-      - name: List files after Docker
+      # 7) Debug: list files & preview editorial.txt
+      - name: Show editorial.txt
         run: |
-          echo "Workspace contents:"
-          ls -l
-          echo "Editorial preview:"
-          cat editorial.txt || echo "No editorial.txt found"
+          echo "=== Files in workspace ==="
+          ls -1
+          echo "=== editorial.txt content ==="
+          cat editorial.txt || echo "(no editorial.txt!)"
 
+      # 8) Send email if editorial.txt exists
       - name: Send email
         if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3

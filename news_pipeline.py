@@ -1,7 +1,7 @@
+import os
 import sys
 import requests
 from bs4 import BeautifulSoup
-import os
 
 def fetch_article(url):
     try:
@@ -35,11 +35,16 @@ def fetch_article(url):
         }
 
 def main():
+    import os
+
     # Prefer URLs from command-line
     urls = sys.argv[1:]
     if not urls:
         # Fallback to file only if no CLI args
-        if os.path.exists('today_links.txt'):
+        if os.path.exists('/out/today_links.txt'):
+            with open('/out/today_links.txt', 'r') as f:
+                urls = [line.strip() for line in f if line.strip()]
+        elif os.path.exists('today_links.txt'):
             with open('today_links.txt', 'r') as f:
                 urls = [line.strip() for line in f if line.strip()]
         else:
@@ -61,13 +66,13 @@ def main():
         body_lines.append(f"### {i}. {art['title']}\n\n{art['content']}\n")
     body = "\n\n---\n\n".join(body_lines)
 
-    # Always write to editorial.txt in current working directory
-    with open('editorial.txt', 'w', encoding='utf-8') as f:
+    # >>>> HERE IS THE IMPORTANT PART <<<<
+    # Always write output to /out/editorial.txt (host-mapped directory)
+    output_path = "/out/editorial.txt" if os.path.exists("/out") else "editorial.txt"
+    with open(output_path, 'w', encoding='utf-8') as f:
         f.write(body)
 
-    print("Editorial body saved to editorial.txt")
-    # Optionally: print the content for debugging
-    print(body)
+    print(f"Editorial body saved to {output_path}")
 
 if __name__ == '__main__':
     main()

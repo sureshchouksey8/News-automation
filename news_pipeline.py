@@ -1,7 +1,7 @@
-import os
 import sys
 import requests
 from bs4 import BeautifulSoup
+import os
 
 def fetch_article(url):
     try:
@@ -46,7 +46,14 @@ def main():
             with open('today_links.txt', 'r') as f:
                 urls = [line.strip() for line in f if line.strip()]
         else:
-            print("No links provided and today_links.txt does not exist.")
+            print("No links provided and today_links.txt (in /out/ or current dir) does not exist.")
+            # Debug: show contents of /out if missing
+            if not os.path.exists('/out/today_links.txt'):
+                print("Listing /out directory:")
+                try:
+                    print(os.listdir("/out"))
+                except Exception as e:
+                    print(f"Could not list /out: {e}")
             exit(1)
 
     if len(urls) < 1:
@@ -64,18 +71,27 @@ def main():
         body_lines.append(f"### {i}. {art['title']}\n\n{art['content']}\n")
     body = "\n\n---\n\n".join(body_lines)
 
-    # >>>> Always write output to /out/editorial.txt (host-mapped directory)
-    output_dir = "/out" if os.path.exists("/out") else "."
-    editorial_path = os.path.join(output_dir, "editorial.txt")
-    with open(editorial_path, 'w', encoding='utf-8') as f:
-        f.write(body)
-    print(f"Editorial body saved to {editorial_path}")
+    # Always write output to /out/editorial.txt (mounted workspace)
+    editorial_path = "/out/editorial.txt"
+    try:
+        with open(editorial_path, 'w', encoding='utf-8') as f:
+            f.write(body)
+        print(f"Editorial body saved to {editorial_path}")
+    except Exception as e:
+        print(f"Error writing to {editorial_path}: {e}")
+        print("Listing /out directory for debug:")
+        try:
+            os.system("ls -la /out")
+        except Exception as ls_e:
+            print(f"Could not list /out: {ls_e}")
+        exit(1)
 
-    # (Optional) List files for debugging
-    print("=== Directory listing for debugging ===")
-    for dirpath, dirnames, filenames in os.walk(output_dir):
-        for filename in filenames:
-            print(os.path.join(dirpath, filename))
+    print("=== Directory listing for debugging (/out) ===")
+    if os.path.exists("/out"):
+        for entry in os.listdir("/out"):
+            print(os.path.join("/out", entry))
+    else:
+        print("/out does not exist.")
 
 if __name__ == '__main__':
     main()

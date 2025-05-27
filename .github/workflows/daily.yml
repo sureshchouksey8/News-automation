@@ -2,10 +2,8 @@ name: Daily News Editorial
 
 on:
   schedule:
-    # 17:00 IST = 11:30 UTC
-    - cron: '0 12 * * *'
-    # 19:30 IST = 14:00 UTC
-    - cron: '30 14 * * *'
+    - cron: '0 12 * * *'   # Daily at ~17:00 IST
+    - cron: '30 14 * * *'   # Daily at ~19:30 IST
   workflow_dispatch:
 
 jobs:
@@ -13,93 +11,51 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # 1. Checkout code
-      - name: Checkout repository
+      - name: Checkout
         uses: actions/checkout@v4
 
-      # 2. Build Docker image
-      - name: Build Docker image
-        run: docker build -t news-bot .
-
-      # 3. Install Python dependencies (for runner, not in container)
-      - name: Install Python dependencies
-        run: pip install -r requirements.txt
-
-      # 4. Install feedparser + dateutil (for fetch_news_urls.py)
-      - name: Install feedparser and dateutil
+      - name: Install runner deps
         run: pip install feedparser python-dateutil
 
-      # 5. Fetch today’s news URLs
-      - name: Fetch today’s news URLs
+      - name: Fetch today's news URLs
         run: python fetch_news_urls.py
 
-      # 6. Check number of links (require at least 3)
-      - name: Check number of links
+      - name: Require ≥3 links
         run: |
           n=$(wc -l < today_links.txt)
           if [ "$n" -lt 3 ]; then
-            echo "❌ Need at least 3 news links! Found only $n"
-            cat today_links.txt
+            echo "❌ Only $n links found."
             exit 1
           fi
 
-      # 7. Run editorial draft inside Docker
-      - name: Run editorial draft
+      - name: Build Docker image
+        run: docker build -t news-bot .
+
+      - name: Generate Editorial
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
-          set -eux
-          echo "=== TODAY LINKS ==="
-          cat today_links.txt
-          echo "=== STARTING CONTAINER ==="
           docker run --rm \
             -v "${{ github.workspace }}:/out" \
             -e OPENAI_API_KEY \
             news-bot $(cat today_links.txt)
-          echo "=== FILES AFTER CONTAINER (workspace) ==="
-          find . -maxdepth 2 -type f -print
 
-      # 8. Debug: Show generated editorial
-      - name: Show editorial.txt
+      - name: List files after Docker
         run: |
-          echo "--- Files in workspace ---"
+          echo "Workspace contents:"
           ls -l
-          echo "--- editorial.txt content ---"
-          cat editorial.txt || echo "No editorial.txt found!"
+          echo "Editorial preview:"
+          cat editorial.txt || echo "No editorial.txt found"
 
-      # 9. Upload artifacts (optional, for debugging)
-      - name: Upload artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: run-${{ github.run_id }}
-          path: |
-            today_links.txt
-            editorial.txt
-
-      # 10. Read editorial.txt into BODY_B64
-      - name: Read editorial.txt into BODY_B64
-        id: get_body
-        run: |
-          if [[ -s editorial.txt ]]; then
-            BODY_B64=$(base64 -w 0 editorial.txt)
-            echo "body_b64=$BODY_B64" >> $GITHUB_OUTPUT
-          else
-            echo "❌ editorial.txt is missing or empty!" >&2
-            exit 1
-          fi
-
-      # 11. Send email if editorial exists
       - name: Send email
-        if: success() && steps.get_body.outputs.body_b64 != ''
+        if: success() && hashFiles('editorial.txt') != ''
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
-          server_port:     465
-          username:        ${{ secrets.SMTP_USER }}
-          password:        ${{ secrets.SMTP_PASS }}
-          subject:         "Daily Hindi Editorial – Run #${{ github.run_number }}"
-          to:              sureshchouksey8@gmail.com
-          from:            "News Bot <sureshchouksey8@gmail.com>"
-          # decode the base64 back into the actual Hindi text
-          body:            ${{ fromJson('{"data":"'"${{ steps.get_body.outputs.body_b64 }}"'"}') | base64decode }}
+          server_port: 465
+          username: ${{ secrets.SMTP_USER }}
+          password: ${{ secrets.SMTP_PASS }}
+          subject: "Daily Hindi Editorial – Run #${{ github.run_number }}"
+          to: sureshchouksey8@gmail.com
+          from: "News Bot <sureshchouksey8@gmail.com>"
+          body_file: editorial.txt

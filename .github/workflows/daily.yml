@@ -21,11 +21,11 @@ jobs:
       - name: Build Docker image
         run: docker build -t news-bot .
 
-      # 3. Install Python dependencies
+      # 3. Install Python dependencies (for runner, not in container)
       - name: Install Python dependencies
         run: pip install -r requirements.txt
 
-      # 4. Install feedparser + dateutil
+      # 4. Install feedparser + dateutil (for fetch_news_urls.py)
       - name: Install feedparser and dateutil
         run: pip install feedparser python-dateutil
 
@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
 
-      # 7. Run editorial generation in Docker
+      # 7. Run editorial draft inside Docker
       - name: Run editorial draft
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -56,44 +56,50 @@ jobs:
             -v "${{ github.workspace }}:/out" \
             -e OPENAI_API_KEY \
             news-bot $(cat today_links.txt)
-          echo "=== FILES AFTER CONTAINER ==="
+          echo "=== FILES AFTER CONTAINER (workspace) ==="
           find . -maxdepth 2 -type f -print
 
-      # 8. Debug: Show generated files
-      - name: Show files and editorial.txt
+      # 8. Debug: Show generated editorial
+      - name: Show editorial.txt
         run: |
           echo "--- Files in workspace ---"
-          ls -la
+          ls -l
           echo "--- editorial.txt content ---"
           cat editorial.txt || echo "No editorial.txt found!"
 
-      # 9. Upload only the editorial.txt artifact (for debugging)
-      - name: Upload editorial artifact
+      # 9. Upload artifacts (optional, for debugging)
+      - name: Upload artifacts
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run-${{ github.run_id }}
-          path: editorial.txt
+          path: |
+            today_links.txt
+            editorial.txt
 
-      # 10. Read editorial.txt into a multiline output var
-      - name: Read editorial.txt to BODY
+      # 10. Read editorial.txt into BODY_B64
+      - name: Read editorial.txt into BODY_B64
         id: get_body
-        shell: bash
         run: |
-          echo "body<<EOF" >> "$GITHUB_OUTPUT"
-          cat editorial.txt >> "$GITHUB_OUTPUT"
-          echo "EOF" >> "$GITHUB_OUTPUT"
+          if [[ -s editorial.txt ]]; then
+            BODY_B64=$(base64 -w 0 editorial.txt)
+            echo "body_b64=$BODY_B64" >> $GITHUB_OUTPUT
+          else
+            echo "❌ editorial.txt is missing or empty!" >&2
+            exit 1
+          fi
 
       # 11. Send email if editorial exists
-      - name: Send email (only if editorial exists)
-        if: success() && hashFiles('editorial.txt') != ''
+      - name: Send email
+        if: success() && steps.get_body.outputs.body_b64 != ''
         uses: dawidd6/action-send-mail@v3
         with:
           server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.SMTP_USER }}
-          password: ${{ secrets.SMTP_PASS }}
-          subject: "Daily Hindi Editorial – Run #${{ github.run_number }}"
-          to: sureshchouksey8@gmail.com
-          from: "News Bot <sureshchouksey8@gmail.com>"
-          body: ${{ steps.get_body.outputs.body }}
+          server_port:     465
+          username:        ${{ secrets.SMTP_USER }}
+          password:        ${{ secrets.SMTP_PASS }}
+          subject:         "Daily Hindi Editorial – Run #${{ github.run_number }}"
+          to:              sureshchouksey8@gmail.com
+          from:            "News Bot <sureshchouksey8@gmail.com>"
+          # decode the base64 back into the actual Hindi text
+          body:            ${{ fromJson('{"data":"'"${{ steps.get_body.outputs.body_b64 }}"'"}') | base64decode }}

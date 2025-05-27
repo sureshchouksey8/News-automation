@@ -58,11 +58,11 @@ def main():
 
     body = "\n\n---\n\n".join(body_lines)
 
-    # Save to file for email body (since dawidd6/action-send-mail@v3 can use body_file)
-    with open('editorial.txt', 'w', encoding='utf-8') as f:
+    # --- KEY DIFFERENCE: Save to /out/editorial.txt ---
+    with open('/out/editorial.txt', 'w', encoding='utf-8') as f:
         f.write(body)
 
-    print("Editorial body saved to editorial.txt")
+    print("Editorial body saved to /out/editorial.txt")
 
 if __name__ == '__main__':
     main()

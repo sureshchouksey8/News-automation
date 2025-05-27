@@ -2,10 +2,8 @@ name: Daily News Editorial
 
 on:
   schedule:
-    # 17:00 IST = 11:30 UTC
-    - cron: '0 12 * * *'
-    # 19:30 IST = 14:00 UTC
-    - cron: '30 14 * * *'
+    - cron:  '0 12 * * *'   # ~17:00 IST daily
+    - cron: '30 14 * * *'   # ~19:30 IST daily
   workflow_dispatch:
 
 jobs:
@@ -17,30 +15,29 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      # 2) Install runner deps (for fetch_news_urls.py)
-      - name: Install runner deps
+      # 2) Runner deps (for fetch_news_urls.py)
+      - name: Install fetch-news deps
         run: pip install feedparser python-dateutil
 
-      # 3) Fetch today’s news URLs
+      # 3) Fetch RSS links
       - name: Fetch today’s news URLs
         run: python fetch_news_urls.py
 
-      # 4) Require at least 3 links
+      # 4) Ensure at least 3 links
       - name: Require ≥3 links
         run: |
           n=$(wc -l < today_links.txt)
           if [ "$n" -lt 3 ]; then
             echo "❌ Only $n links found."
-            cat today_links.txt
             exit 1
           fi
 
       # 5) Build Docker image
-      - name: Build Docker image
+      - name: Build news-bot container
         run: docker build -t news-bot .
 
-      # 6) Generate editorial inside container
-      - name: Generate Editorial
+      # 6) Generate editorial via container
+      - name: Generate Hindi editorial
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
         run: |
@@ -49,24 +46,46 @@ jobs:
             -e OPENAI_API_KEY \
             news-bot $(cat today_links.txt)
 
-      # 7) Debug: list files & preview editorial.txt
+      # 7) Debug the generated file
       - name: Show editorial.txt
         run: |
           echo "=== Files in workspace ==="
           ls -1
           echo "=== editorial.txt content ==="
-          cat editorial.txt || echo "(no editorial.txt!)"
+          cat editorial.txt
 
-      # 8) Send email if editorial.txt exists
-      - name: Send email
+      # 8) Email editorial.txt via Python
+      - name: Send email via Python SMTP
         if: success() && hashFiles('editorial.txt') != ''
-        uses: dawidd6/action-send-mail@v3
-        with:
-          server_address: smtp.gmail.com
-          server_port: 465
-          username: ${{ secrets.SMTP_USER }}
-          password: ${{ secrets.SMTP_PASS }}
-          subject: "Daily Hindi Editorial – Run #${{ github.run_number }}"
-          to: sureshchouksey8@gmail.com
-          from: "News Bot <sureshchouksey8@gmail.com>"
-          body_file: editorial.txt
+        env:
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASS: ${{ secrets.SMTP_PASS }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          python3 - <<'PYCODE'
+import smtplib, os
+from email.mime.text import MIMEText
+
+# SMTP configuration
+HOST = "smtp.gmail.com"
+PORT = 465
+USER = os.getenv("SMTP_USER")
+PASS = os.getenv("SMTP_PASS")
+
+# Read the editorial
+with open("editorial.txt", encoding="utf-8") as f:
+    body = f.read()
+
+# Construct email
+msg = MIMEText(body, _charset="utf-8")
+msg["Subject"] = f"Daily Hindi Editorial – Run #{os.getenv('GITHUB_RUN_NUMBER')}"
+msg["From"]    = USER
+msg["To"]      = "sureshchouksey8@gmail.com"
+
+# Send it
+with smtplib.SMTP_SSL(HOST, PORT) as smtp:
+    smtp.login(USER, PASS)
+    smtp.send_message(msg)
+
+print("✅ Email sent.")
+PYCODE

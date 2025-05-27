@@ -1,14 +1,15 @@
-import os
+#!/usr/bin/env python3
 import sys
-import requests
-from bs4 import BeautifulSoup
+import os
 import re
+import requests
 import datetime
 import openai
+from bs4 import BeautifulSoup
 from dateutil import parser as date_parser
 
 # ====== CONFIGURABLE ======
-OPENAI_MODEL = "gpt-4o"
+OPENAI_MODEL   = "gpt-4o"
 EDITORIAL_STYLE = (
     "इस समाचार को पढ़कर एक संक्षिप्त, सरल, और सटीक संपादकीय लिखिए। "
     "संपादकीय में किसी उपशीर्षक, ब्रेक, या श्रेणी का प्रयोग न करें। "
@@ -16,168 +17,177 @@ EDITORIAL_STYLE = (
     "यह सब कुछ पूरी तरह हिंदी में हो, और ITDC News की तर्ज़ पर निष्पक्ष, तथ्यात्मक, और स्पष्ट रहे।"
 )
 
-# === Step 1: Fetch Article ===
-def fetch_article(url):
-    try:
-        r = requests.get(url, timeout=12)
-        r.raise_for_status()
-        soup = BeautifulSoup(r.content, 'html.parser')
-        title = soup.title.string.strip() if soup.title else 'No Title'
 
-        # Extract main content
+def fetch_article(url):
+    """Fetch title, main content, and publication date (if any) from the given URL."""
+    try:
+        r = requests.get(url, timeout=15)
+        r.raise_for_status()
+        soup = BeautifulSoup(r.content, "html.parser")
+
+        # Title
+        title = soup.title.string.strip() if soup.title else "No Title"
+
+        # Main content selectors
         main_content = ""
-        for selector in [
-            'article',
+        for sel in [
+            "article",
             'div[itemprop="articleBody"]',
             'div[class*="content"]',
             'div[class*="story"]',
             'section[class*="article"]',
-            'div#content',
+            "div#content",
         ]:
-            el = soup.select_one(selector)
-            if el and el.text.strip():
-                main_content = el.get_text(separator="\n", strip=True)
+            block = soup.select_one(sel)
+            if block and block.get_text(strip=True):
+                main_content = block.get_text(separator="\n", strip=True)
                 break
-        if not main_content:
-            main_content = "\n".join([p.get_text(strip=True) for p in soup.find_all('p') if p.get_text(strip=True)])
 
-        # Extract dateline from meta tags (The Hindu, etc.)
+        # Fallback to all <p>
+        if not main_content:
+            paragraphs = [
+                p.get_text(strip=True)
+                for p in soup.find_all("p")
+                if p.get_text(strip=True)
+            ]
+            main_content = "\n".join(paragraphs) or "[No main content found]"
+
+        # Try to extract a pub date from meta tags
         pub_date = None
-        for meta in soup.find_all('meta'):
-            for key in ('property', 'name', 'itemprop'):
-                if meta.get(key, "").lower() in ['article:published_time', 'date', 'publishdate', 'article:modified_time', 'datepublished']:
-                    date_val = meta.get('content', '') or meta.get('value', '')
-                    # Try to extract full ISO timestamp or YYYY-MM-DD
-                    match = re.search(r'\d{4}-\d{2}-\d{2}(T[0-9:.Z+-]+)?', date_val)
-                    if match:
-                        pub_date = match.group(0)
+        for meta in soup.find_all("meta"):
+            for attr in ("property", "name", "itemprop"):
+                val = meta.get(attr, "").lower()
+                if val in (
+                    "article:published_time",
+                    "date",
+                    "publishdate",
+                    "datepublished",
+                    "modified_time",
+                ):
+                    content = meta.get("content") or meta.get("value") or ""
+                    # look for YYYY-MM-DD
+                    m = re.search(r"\d{4}-\d{2}-\d{2}", content)
+                    if m:
+                        pub_date = m.group(0)
                         break
             if pub_date:
                 break
 
         return {
-            'title': title,
-            'content': main_content or "[No main content found]",
-            'url': url,
-            'date': pub_date
-        }
-    except Exception as e:
-        return {
-            'title': url,
-            'content': f"[ERROR fetching: {e}]",
-            'url': url,
-            'date': None
+            "url": url,
+            "title": title,
+            "content": main_content,
+            "date": pub_date,
         }
 
-# === Step 2: Select Most Recent Article (or fallback to first) ===
+    except Exception as e:
+        return {
+            "url": url,
+            "title": url,
+            "content": f"[ERROR fetching: {e}]",
+            "date": None,
+        }
+
+
 def select_best_article(articles):
     """
-    Select the article with the most recent date.
-    If dates are missing/unparseable, fallback to the first article.
+    Pick the article with the newest valid date.
+    If none have a valid date, fallback to the first in list.
     """
     dated_articles = []
     for art in articles:
         date_str = art.get("date")
-        parsed = None
-        if date_str:
-            try:
-                parsed = date_parser.parse(date_str)
-            except Exception:
-                pass
-        if parsed:
-            dated_articles.append({"article": art, "parsed_date": parsed})
+        if not date_str:
+            continue
+        try:
+            parsed = date_parser.parse(date_str)
+        except Exception:
+            continue
+        dated_articles.append({"article": art, "parsed_date": parsed})
 
     if dated_articles:
-        # Sort by parsed date descending (newest first)
+        # sort descending by parsed_date
         dated_articles.sort(key=lambda x: x["parsed_date"], reverse=True)
         return dated_articles[0]["article"]
+
+    # fallback
     return articles[0]
 
-# === Step 3: Build Editorial via OpenAI ===
+
 def draft_editorial(article, api_key):
+    """
+    Call OpenAI ChatCompletion to draft a Hindi editorial.
+    Returns the editorial text, or raises on error.
+    """
     prompt = (
-        f"समाचार का शीर्षक: {article['title']}\n"
+        f"समाचार का शीर्षक: {article['title']}\n\n"
         f"पूरा समाचार:\n{article['content']}\n\n"
         f"{EDITORIAL_STYLE}"
     )
-    try:
-        openai.api_key = api_key
-        response = openai.chat.completions.create(
-            model=OPENAI_MODEL,
-            messages=[
-                {"role": "system", "content": "आप एक अनुभवी हिंदी समाचार संपादक हैं।"},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.4,
-            max_tokens=1000,
-        )
-        return response.choices[0].message.content.strip()
-    except Exception as e:
-        return f"[ERROR: GPT API failed]\n{e}"
+
+    openai.api_key = api_key
+    response = openai.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": "आप एक अनुभवी हिंदी समाचार संपादक हैं।"},
+            {"role": "user",   "content": prompt},
+        ],
+        temperature=0.4,
+        max_tokens=1000,
+    )
+    return response.choices[0].message.content.strip()
+
 
 def main():
-    # ==== 1. Read URLs ====
+    # 1) Collect URLs from CLI args or fallback to today_links.txt
     urls = sys.argv[1:]
     if not urls:
-        if os.path.exists('/out/today_links.txt'):
-            with open('/out/today_links.txt', 'r') as f:
-                urls = [line.strip() for line in f if line.strip()]
-        elif os.path.exists('today_links.txt'):
-            with open('today_links.txt', 'r') as f:
-                urls = [line.strip() for line in f if line.strip()]
-        else:
-            print("No links provided and today_links.txt (in /out/ or current dir) does not exist.")
+        # try the mounted workspace (/out)
+        link_file = "/out/today_links.txt" if os.path.exists("/out/today_links.txt") else "today_links.txt"
+        if not os.path.exists(link_file):
+            print("No links provided and today_links.txt not found.")
             exit(1)
+        with open(link_file, "r") as f:
+            urls = [ln.strip() for ln in f if ln.strip()]
+
     if not urls:
-        print("No links found.")
+        print("No URLs to process.")
         exit(1)
 
-    # ==== 2. Fetch All Articles ====
+    # 2) Fetch all articles
     articles = []
-    for url in urls:
-        print(f"Fetching: {url}")
-        art = fetch_article(url)
-        articles.append(art)
-    if not articles:
-        print("No articles fetched.")
-        exit(1)
+    for u in urls:
+        print(f"Fetching: {u}")
+        articles.append(fetch_article(u))
 
-    # ==== 3. Choose Best ====
-    chosen = select_best_article(articles)
-    print(f"Selected for editorial: {chosen['title']} (date: {chosen['date']})")
+    # 3) Select the best (most recent) article
+    best = select_best_article(articles)
+    print(f"Chosen for editorial: {best['title']} | date={best.get('date')}")
 
-    # ==== 4. Call OpenAI ====
+    # 4) Draft via OpenAI
     api_key = os.environ.get("OPENAI_API_KEY")
     if not api_key:
-        print("No OPENAI_API_KEY in environment. Exiting.")
-        exit(1)
-    editorial = draft_editorial(chosen, api_key)
-    if editorial.startswith("[ERROR"):
-        print(editorial)
+        print("Missing OPENAI_API_KEY in environment.")
         exit(1)
 
-    # ==== 5. Write Out (/out/editorial.txt) ====
-    editorial_path = "/out/editorial.txt"
+    editorial_text = draft_editorial(best, api_key)
+
+    # 5) Write editorial to the mounted workspace
+    out_path = "/out/editorial.txt"
     try:
-        with open(editorial_path, 'w', encoding='utf-8') as f:
-            f.write(editorial)
-        print(f"Editorial body saved to {editorial_path}")
+        with open(out_path, "w", encoding="utf-8") as f:
+            f.write(editorial_text)
+        print(f"Editorial saved: {out_path}")
     except Exception as e:
-        print(f"Error writing to {editorial_path}: {e}")
-        print("Listing /out directory for debug:")
-        try:
-            os.system("ls -la /out")
-        except Exception as ls_e:
-            print(f"Could not list /out: {ls_e}")
+        print(f"ERROR writing editorial: {e}")
+        print("Contents of /out for debugging:", os.listdir("/out"))
         exit(1)
 
-    # Debug
-    print("=== Directory listing for debugging (/out) ===")
-    if os.path.exists("/out"):
-        for entry in os.listdir("/out"):
-            print(os.path.join("/out", entry))
-    else:
-        print("/out does not exist.")
+    # 6) Debug listing
+    print("=== /out directory listing ===")
+    for fn in os.listdir("/out"):
+        print(" -", fn)
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     main()

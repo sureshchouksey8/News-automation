@@ -1,6 +1,7 @@
 import sys
 import requests
 from bs4 import BeautifulSoup
+import os
 
 def fetch_article(url):
     try:
@@ -34,8 +35,6 @@ def fetch_article(url):
         }
 
 def main():
-    import os
-
     # Prefer URLs from command-line
     urls = sys.argv[1:]
     if not urls:
@@ -62,10 +61,13 @@ def main():
         body_lines.append(f"### {i}. {art['title']}\n\n{art['content']}\n")
     body = "\n\n---\n\n".join(body_lines)
 
+    # Always write to editorial.txt in current working directory
     with open('editorial.txt', 'w', encoding='utf-8') as f:
         f.write(body)
 
     print("Editorial body saved to editorial.txt")
+    # Optionally: print the content for debugging
+    print(body)
 
 if __name__ == '__main__':
     main()

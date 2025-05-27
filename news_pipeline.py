@@ -64,13 +64,18 @@ def main():
         body_lines.append(f"### {i}. {art['title']}\n\n{art['content']}\n")
     body = "\n\n---\n\n".join(body_lines)
 
-    # Always write output to /out/editorial.txt if possible
-    output_dir = "/out"
-    output_path = os.path.join(output_dir, "editorial.txt") if os.path.exists(output_dir) else "editorial.txt"
-    with open(output_path, 'w', encoding='utf-8') as f:
+    # >>>> Always write output to /out/editorial.txt (host-mapped directory)
+    output_dir = "/out" if os.path.exists("/out") else "."
+    editorial_path = os.path.join(output_dir, "editorial.txt")
+    with open(editorial_path, 'w', encoding='utf-8') as f:
         f.write(body)
+    print(f"Editorial body saved to {editorial_path}")
 
-    print(f"Editorial body saved to {output_path}")
+    # (Optional) List files for debugging
+    print("=== Directory listing for debugging ===")
+    for dirpath, dirnames, filenames in os.walk(output_dir):
+        for filename in filenames:
+            print(os.path.join(dirpath, filename))
 
 if __name__ == '__main__':
     main()

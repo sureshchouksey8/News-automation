@@ -5,6 +5,7 @@ from bs4 import BeautifulSoup
 import re
 import datetime
 import openai
+from dateutil import parser as date_parser
 
 # ====== CONFIGURABLE ======
 OPENAI_MODEL = "gpt-4o"
@@ -46,8 +47,8 @@ def fetch_article(url):
             for key in ('property', 'name', 'itemprop'):
                 if meta.get(key, "").lower() in ['article:published_time', 'date', 'publishdate', 'article:modified_time', 'datepublished']:
                     date_val = meta.get('content', '') or meta.get('value', '')
-                    # Try to extract YYYY-MM-DD or ISO timestamp
-                    match = re.search(r'\d{4}-\d{2}-\d{2}', date_val)
+                    # Try to extract full ISO timestamp or YYYY-MM-DD
+                    match = re.search(r'\d{4}-\d{2}-\d{2}(T[0-9:.Z+-]+)?', date_val)
                     if match:
                         pub_date = match.group(0)
                         break
@@ -70,18 +71,26 @@ def fetch_article(url):
 
 # === Step 2: Select Most Recent Article (or fallback to first) ===
 def select_best_article(articles):
-    # If all have no date, pick the first.
-    dated = []
+    """
+    Select the article with the most recent date.
+    If dates are missing/unparseable, fallback to the first article.
+    """
+    dated_articles = []
     for art in articles:
-        if art['date']:
+        date_str = art.get("date")
+        parsed = None
+        if date_str:
             try:
-                d = datetime.datetime.strptime(art['date'], "%Y-%m-%d")
-                dated.append((d, art))
+                parsed = date_parser.parse(date_str)
             except Exception:
                 pass
-    if dated:
-        dated.sort(reverse=True)
-        return dated[0][1]
+        if parsed:
+            dated_articles.append({"article": art, "parsed_date": parsed})
+
+    if dated_articles:
+        # Sort by parsed date descending (newest first)
+        dated_articles.sort(key=lambda x: x["parsed_date"], reverse=True)
+        return dated_articles[0]["article"]
     return articles[0]
 
 # === Step 3: Build Editorial via OpenAI ===
@@ -102,7 +111,6 @@ def draft_editorial(article, api_key):
             temperature=0.4,
             max_tokens=1000,
         )
-        # OpenAI v1 client returns 'choices' (list), 'message' (dict), 'content' (string)
         return response.choices[0].message.content.strip()
     except Exception as e:
         return f"[ERROR: GPT API failed]\n{e}"

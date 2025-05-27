@@ -43,7 +43,7 @@ jobs:
             exit 1
           fi
 
-      # 7. Run editorial generation
+      # 7. Run editorial generation in Docker
       - name: Run editorial draft
         env:
           OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
@@ -63,28 +63,26 @@ jobs:
       - name: Show files and editorial.txt
         run: |
           echo "--- Files in workspace ---"
-          ls -l
+          ls -la
           echo "--- editorial.txt content ---"
           cat editorial.txt || echo "No editorial.txt found!"
 
-      # 9. Upload artifacts
-      - name: Upload artifacts
+      # 9. Upload only the editorial.txt artifact (for debugging)
+      - name: Upload editorial artifact
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: run-${{ github.run_id }}
-          path: |
-            links.json
-            run-summary.json
-            editorial.txt
+          path: editorial.txt
 
-      # 10. Read editorial.txt into email body
+      # 10. Read editorial.txt into a multiline output var
       - name: Read editorial.txt to BODY
         id: get_body
+        shell: bash
         run: |
-          echo "body<<EOF" >> $GITHUB_OUTPUT
-          cat editorial.txt >> $GITHUB_OUTPUT
-          echo "EOF" >> $GITHUB_OUTPUT
+          echo "body<<EOF" >> "$GITHUB_OUTPUT"
+          cat editorial.txt >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
 
       # 11. Send email if editorial exists
       - name: Send email (only if editorial exists)

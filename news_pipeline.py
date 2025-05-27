@@ -35,8 +35,6 @@ def fetch_article(url):
         }
 
 def main():
-    import os
-
     # Prefer URLs from command-line
     urls = sys.argv[1:]
     if not urls:
@@ -66,9 +64,9 @@ def main():
         body_lines.append(f"### {i}. {art['title']}\n\n{art['content']}\n")
     body = "\n\n---\n\n".join(body_lines)
 
-    # >>>> HERE IS THE IMPORTANT PART <<<<
-    # Always write output to /out/editorial.txt (host-mapped directory)
-    output_path = "/out/editorial.txt" if os.path.exists("/out") else "editorial.txt"
+    # Always write output to /out/editorial.txt if possible
+    output_dir = "/out"
+    output_path = os.path.join(output_dir, "editorial.txt") if os.path.exists(output_dir) else "editorial.txt"
     with open(output_path, 'w', encoding='utf-8') as f:
         f.write(body)
 
